@@ -1,6 +1,7 @@
 import inspect
 import logging
 import os
+import sys
 from datetime import datetime
 from typing import List, Union
 
@@ -141,8 +142,32 @@ class WebApp(__Base__):
     def controller(cls):
         pass
 
+
+def __wrap_pydantic__(pre,cls):
+
+    if hasattr(cls,"__annotations__"):
+        ls = list(cls.__dict__.items())
+        for k, v in ls:
+            if not (k[0:2] == "__" and k[:-2] != "__") and v not in [str, int, datetime, bool,
+                                                                     float] and inspect.isclass(v):
+
+                cls.__annotations__[k] = __wrap_pydantic__(cls.__name__, v)
+                setattr(cls,k,None)
+
+        for k,v in cls.__annotations__.items():
+            if v not in [str,int,datetime,bool,float] and inspect.isclass(v):
+                if cls.__annotations__.get(k) is None:
+                    cls.__annotations__[k] =__wrap_pydantic__(cls.__name__,v)
+                    setattr(sys.modules[cls.__moduel__], k, None)
+
+    ret_cls = type(f"__dynamic_{pre}_{cls.__name__}__", (cls,pydantic.BaseModel,), dict(cls.__dict__))
+    ret_cls.__name__ = f"__dynamic_{pre}_{cls.__name__}__"
+    return ret_cls
+
+
+
 class __hanlder__:
-    def __init__(self,method,path,handler):
+    def __init__(self, method, path, handler):
         self.path= path
         __old_dfs__ = []
         if handler.__defaults__ is not None:
@@ -152,8 +177,8 @@ class __hanlder__:
             __defaults__=[]
             for k,v in __annotations__.items():
                 if v not in [str,int,float,datetime] and  inspect.isclass(v):
-
-                    handler.__annotations__[k]=type(f"post_model_{v.__name__}", (v,pydantic.BaseModel,), dict(v.__dict__))
+                    if not issubclass(v,pydantic.BaseModel):
+                        handler.__annotations__[k]=__wrap_pydantic__(handler.__name__,v)
                 __defaults__+=[fastapi.Body(title=k)]
             __defaults__+=__old_dfs__
             # def new_handler(*args,**kwargs):
